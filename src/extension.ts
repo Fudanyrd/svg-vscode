@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 /**
@@ -8,6 +9,51 @@ import * as vscode from 'vscode';
  */
 function isSvgDocument(document: vscode.TextDocument): boolean {
   return document.fileName.toLowerCase().endsWith('.svg');
+}
+
+/**
+ * Returns true when `filePath` has an `.svg` extension (case-insensitive).
+ * This is the sole predicate behind the Explorer `[]` badge.
+ */
+function hasSvgExtension(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === '.svg';
+}
+
+/**
+ * Decorates `.svg` files with a `[]` badge in the Explorer view.
+ *
+ * The badge is purely presentational: it is attached to the Explorer tree
+ * node by VS Code and never changes the file name or file contents.
+ */
+export class SvgFileDecorationProvider implements vscode.FileDecorationProvider {
+  async provideFileDecoration(
+    uri: vscode.Uri,
+    _token: vscode.CancellationToken
+  ): Promise<vscode.FileDecoration | undefined> {
+    // Only decorate real files on disk. URI schemes such as `untitled:` or
+    // virtual schemes are not part of the Explorer file tree we target.
+    if (uri.scheme !== 'file' || !hasSvgExtension(uri.fsPath)) {
+      return undefined;
+    }
+
+    // A directory may technically be named `something.svg`; do not decorate
+    // it because the requirement is to mark files only.
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type !== vscode.FileType.File) {
+        return undefined;
+      }
+    } catch {
+      // The file may have been deleted between the tree query and the stat
+      // call. Treat it as non-decoratable instead of failing.
+      return undefined;
+    }
+
+    return {
+      badge: '[]',
+      tooltip: 'SVG file'
+    };
+  }
 }
 
 class SvgDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
@@ -46,6 +92,12 @@ export function activate(context: vscode.ExtensionContext): void {
       [{ language: 'xml', scheme: 'file' }, { language: 'svg', scheme: 'file' }],
       provider
     )
+  );
+
+  // A.1: show a `[]` badge next to `.svg` files in the Explorer view.
+  const decorationProvider = new SvgFileDecorationProvider();
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(decorationProvider)
   );
 
   const disposable = vscode.commands.registerCommand('demo.helloWorld', () => {
