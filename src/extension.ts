@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { XmlNode, SvgParser } from './serialization/SvgParser';
 
 /**
  * VS Code maps `.svg` files to the built-in `xml` language by default, so this
@@ -57,6 +58,39 @@ export class SvgFileDecorationProvider implements vscode.FileDecorationProvider 
 }
 
 class SvgDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
+
+  private inferSymbolKind(name: string): vscode.SymbolKind {
+    switch (name) {
+      case "svg": {
+        return vscode.SymbolKind.Module;
+      }
+      case "g": {
+        return vscode.SymbolKind.Class;
+      }
+    }
+    return vscode.SymbolKind.Method;
+  }
+
+  private buildSymbol(node: XmlNode): vscode.DocumentSymbol {
+    let children: vscode.DocumentSymbol[] = [];
+
+    var childNode: XmlNode;
+    for (var i = 0; i < node.children.length; i++) {
+      childNode = node.children[i];
+      children.push(this.buildSymbol(childNode));
+    }
+
+    let ret = new vscode.DocumentSymbol(
+      node.name + (node.id ? `#${node.id}` : ""),
+      "",
+      this.inferSymbolKind(node.name),
+      node.range,
+      node.range, 
+    );
+    ret.children = children;
+    return ret;
+  }
+
   provideDocumentSymbols(
     document: vscode.TextDocument,
     token: vscode.CancellationToken
@@ -67,20 +101,11 @@ class SvgDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
       return [];
     }
 
-    // Hard-coded starter symbol: the SVG root element.
-    //
-    // `DocumentSymbol` supports a `children` array to build a tree. Once this
-    // node has children, the Outline view shows it as a collapsible container
-    // and the breadcrumbs / "Go to Symbol in File" show it as "svg/".
-    const svgRoot = new vscode.DocumentSymbol(
-      'svg',               // label shown in the Outline panel
-      'SVG root element',  // detail (secondary text)
-      vscode.SymbolKind.Module,
-      new vscode.Range(0, 0, 0, 0), // full range (whole symbol)
-      new vscode.Range(0, 0, 0, 0)  // selection range
-    );
-
-    return [svgRoot];
+    const svgRoot = (new SvgParser()).parse(document);
+    if (svgRoot === undefined) {
+      return [];
+    }
+    return [this.buildSymbol(svgRoot)];
   }
 }
 
