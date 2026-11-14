@@ -1,0 +1,8 @@
+node_modules/
+.vscode-test
+out/
+*.swp
+
+adr/*
+!adr/references.md
+vsc-extension-quickstart.md
